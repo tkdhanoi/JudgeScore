@@ -104,19 +104,73 @@ th {
     background: #f1f8e9;
 }
 
+#loginBox{
+    margin:10px auto;
+    width:400px;
+    padding:5px;
+    border-radius:10px;
+    background:#f4f6f8;
+    box-shadow:0 0 5px #ccc;
+}
+
+#judgeSelect{
+    width:200px;
+    height:40px;
+    font-size:20px;
+}
+
+#loginBtn,
+#logoutBtn{
+    width:150px;
+    height:40px;
+    font-size:18px;
+    margin-top:5px;
+    cursor:pointer;
+}
+
+#judgeStatus{
+    margin-top:5px;
+    font-size:18px;
+    font-weight:bold;
+}
 </style>
 </head>
 
 <body>
 
-<h2>Judge Score 1</h2>
+<h2>Judge Score</h2>
+
+<div id="loginBox">
+<select id="judgeSelect">
+	<option value="">Chọn Judge</option>
+	<option value="1">Judge 1</option>
+	<option value="2">Judge 2</option>
+	<option value="3">Judge 3</option>
+	<option value="4">Judge 4</option>
+	<option value="5">Judge 5</option>
+</select>
+<button id="loginBtn"
+	onclick="loginJudge()">
+	ĐĂNG NHẬP
+</button>
+
+<button id="logoutBtn"
+	onclick="logoutJudge()"
+	style="display:none">
+	ĐĂNG XUẤT
+</button>
+<div id="judgeStatus">
+🔴 Chưa đăng nhập
+</div>
+
+</div>
 <div style="
 display:flex;
 justify-content:space-between;
 align-items:center;
 background:#e3f2fd;
-padding:10px;
-margin-bottom:10px;
+padding:5px;
+margin-bottom:5px;
 ">
 
 <div id="matchInfo"
@@ -138,6 +192,7 @@ margin-bottom:10px;
 </div>
 
 </div>
+<div id="judgePanel" style="display:none;">
 <table>
 <thead>
 <tr>
@@ -230,6 +285,7 @@ margin-bottom:10px;
     GỬI ĐIỂM
 </button>
 </div>
+</div>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
@@ -248,14 +304,16 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-window.addEventListener("beforeunload", () => {
-    db.ref(`bddd/status/J${JUDGE_ID}`).set({
-        online:false,
-        lastSeen:Date.now()
-    });
+window.addEventListener("beforeunload",()=>{
+    if(JUDGE_ID!=""){
+        db.ref("bddd/status/J"+JUDGE_ID).set({
+            online:false,
+            lastSeen:Date.now()
+        });
+    }
 });
 
-const JUDGE_ID = 1;
+let JUDGE_ID = "";
 const matchInfo =
 document.getElementById("matchInfo");
 
@@ -266,47 +324,24 @@ let deduction = 0;
 let history = [];
 let scoreLocked = false;
 let lastTeam = "";
-
-const statusRef =
-db.ref("bddd/status/J"+JUDGE_ID);
-
-statusRef.set({
-    online:true,
-    lastSeen:Date.now()
-});
-
-statusRef.onDisconnect().set({
-    online:false,
-    lastSeen:Date.now()
-});
-    
+  
 db.ref("bddd/currentTeam")
 .on("value", snap => {
-
     const data = snap.val();
-
     if(!data) return;
-
     const key =
         data.stt + "_" + data.team;
-
     if(key !== lastTeam){
-
         lastTeam = key;
-
         matchInfo.textContent =
             data.stt + ". " + data.team;
-
     resetSheet();
 }
 });
 db.ref("bddd/timer")
 .on("value", snap => {
-
     const data = snap.val();
-
     if(!data) return;
-
     timerDisplay.textContent =
         data.time || "00:00";
 });
@@ -318,10 +353,79 @@ db.ref("bddd/lock")
     }
 });
 
+async function loginJudge(){
+    const id =
+    document.getElementById("judgeSelect").value;
+    if(id==""){
+        alert("Hãy chọn Judge");
+        return;
+    }
+
+    const ok=
+    await checkJudgeAvailable(id);
+
+    if(!ok){
+    	alert("Judge "+id+
+	" đang được sử dụng trên thiết bị khác."
+    );
+    return;
+    }
+    
+    JUDGE_ID=id;
+    localStorage.setItem("judgeID", id);
+    document.getElementById("judgeStatus").innerHTML=
+    "🟢 ĐÃ ĐĂNG NHẬP : Judge "+id;
+
+    document.getElementById("loginBtn").style.display="none";
+    document.getElementById("judgeSelect").disabled=true;
+    document.getElementById("logoutBtn").style.display="inline-block";
+    document.getElementById("judgePanel").style.display="block";
+
+    // cập nhật trạng thái online
+    const statusRef=
+    db.ref("bddd/status/J"+JUDGE_ID);
+    statusRef.set({
+        online:true,
+        lastSeen:Date.now()
+    });
+    statusRef.onDisconnect().set({
+        online:false,
+        lastSeen:Date.now()
+    });
+    }
+
+function checkJudgeAvailable(id){
+    return db.ref("bddd/status/J"+id)
+    .once("value")
+    .then(snap=>{const data=snap.val();
+        if(!data) return true;
+        if(data.online===true){return false;
+        }
+        return true;
+    });
+    }
+
+function logoutJudge(){
+    db.ref("bddd/status/J"+JUDGE_ID).set({
+        online:false,
+        lastSeen:Date.now()
+    });
+
+    JUDGE_ID="";
+    localStorage.removeItem("judgeID");
+    document.getElementById("judgeStatus").innerHTML=
+    "🔴 CHƯA ĐĂNG NHẬP";
+
+    document.getElementById("loginBtn").style.display="inline-block";
+    document.getElementById("judgeSelect").disabled=false;
+    document.getElementById("judgeSelect").value="";
+    document.getElementById("logoutBtn").style.display="none";
+    document.getElementById("judgePanel").style.display="none";
+    }
+
 function buildButtons() {
     document.querySelectorAll(".buttons").forEach(cell => {
         const max = parseInt(cell.dataset.max);
-
         for (let i = max; i >= 1; i--) {
             const btn = document.createElement("button");
             btn.textContent = i;
@@ -333,25 +437,18 @@ function buildButtons() {
 }
 
 function updateBreakingTotal() {
-
     let total = 0;
-
     document.querySelectorAll(".breaking").forEach(cell => {
-
         const selected = cell.querySelector(".btn-selected");
-
         if(selected){
             total += Number(selected.textContent);
         }
-
     });
-
     document.getElementById("breakingTotal").textContent = total;
-
-}
+    }
 
 function selectScore(cell, value, button) {
-if(scoreLocked) return;
+    if(scoreLocked) return;
     const buttons = cell.querySelectorAll("button");
     buttons.forEach(b => b.classList.remove("btn-selected"));
     button.classList.add("btn-selected");
@@ -363,7 +460,7 @@ if(scoreLocked) return;
 }
 
 function addDeduction(value) {
-if(scoreLocked) return;
+    if(scoreLocked) return;
     history.push(value);
     deduction += value;
     document.getElementById("deductionTotal").textContent = deduction;
@@ -371,7 +468,7 @@ if(scoreLocked) return;
 }
 
 function undoDeduction() {
-if(scoreLocked) return;
+    if(scoreLocked) return;
     if (history.length === 0) return;
     deduction -= history.pop();
     document.getElementById("deductionTotal").textContent = deduction;
@@ -379,28 +476,20 @@ if(scoreLocked) return;
 }
 
 function updateTotal() {
-
     let total = 0;
-
     // 20 điểm
     total += Number(document.querySelectorAll(".score-cell")[0].textContent);
-
     // 20 điểm
     total += Number(document.querySelectorAll(".score-cell")[1].textContent);
-
     // Breaking 50
     total += Number(document.getElementById("breakingTotal").textContent);
-
     // Composition
     total += Number(document.querySelectorAll(".score-cell")[3].textContent);
-
     total -= deduction;
-
     document.getElementById("totalScore").textContent = total;
 }
 
 function sendScore(){
-
     if(!validateScore()){
         alert(
         "Vui lòng chấm đủ tất cả các mục trước khi gửi điểm."
@@ -422,15 +511,11 @@ function sendScore(){
       "bddd/judges/J"+JUDGE_ID
     )
     .set({
-
         total: total,
-
         breaking: breaking,
-
         timestamp: Date.now()
 
-    })
-    .then(()=>{
+    })    .then(()=>{
         lockSheet();
     })
     .catch(()=>{
@@ -443,9 +528,7 @@ db.ref(`bddd/submitted/J${JUDGE_ID}`).set({
 }
 
 function lockSheet(){
-
     scoreLocked = true;
-
     document
     .querySelectorAll(".btn-score")
     .forEach(btn=>{
@@ -466,53 +549,43 @@ function lockSheet(){
 }
 
 function unlockSheet(){
-
     scoreLocked = false;
-
     document
     .querySelectorAll(".btn-score")
     .forEach(btn=>{
         btn.disabled = false;
         btn.style.opacity = 1;
     });
-
     document
     .querySelectorAll(".btn-deduction")
     .forEach(btn=>{
         btn.disabled = false;
         btn.style.opacity = 1;
     });
-
     sendBtn.disabled = false;
     sendBtn.textContent = "GỬI ĐIỂM";
     sendBtn.style.background = "#4caf50";
 }
 
 function resetSheet(){
-
     deduction = 0;
     history = [];
-
     document
     .getElementById("deductionTotal")
     .textContent = 0;
-
     document
     .querySelectorAll(".score-cell")
     .forEach(cell=>{
         cell.textContent = 0;
     });
-
     document
     .querySelectorAll(".btn-score")
     .forEach(btn=>{
         btn.classList.remove("btn-selected");
     });
-
     document
     .getElementById("breakingTotal")
     .textContent = 0;
-
     document
     .getElementById("totalScore")
     .textContent = 0;
@@ -520,39 +593,38 @@ function resetSheet(){
     unlockSheet();
 }
 function validateScore(){
-
     const normalRows =
         document.querySelectorAll(".buttons:not(.breaking)");
-
     for(const cell of normalRows){
-
         if(!cell.querySelector(".btn-selected")){
             return false;
         }
     }
-
     const breakingRows =
         document.querySelectorAll(".breaking");
-
     for(const cell of breakingRows){
-
         if(!cell.querySelector(".btn-selected")){
             return false;
         }
     }
-
     return true;
 }
+
 window.onload = ()=>{
-
     window.moveTo(0,0);
-
     window.resizeTo(
         screen.availWidth,
         screen.availHeight
     );
-
+    const savedJudge =
+        localStorage.getItem("judgeID");
+    if(savedJudge){
+        document.getElementById("judgeSelect").value =
+            savedJudge;
+        loginJudge();
+    }
 };
+
 buildButtons();
 </script>
 
